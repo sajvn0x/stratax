@@ -1,6 +1,8 @@
 #ifndef CORE_DEFINES_H
 #define CORE_DEFINES_H
 
+#include <stdbool.h>
+
 // types
 typedef unsigned char u8;
 typedef unsigned short u16;
@@ -16,7 +18,6 @@ typedef float f32;
 typedef double f64;
 
 typedef int b32;
-typedef _Bool bool;
 
 #if defined(__clang__) || defined(__GNUC__)
 #define STATIC_ASSERT _Static_assert
