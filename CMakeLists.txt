@@ -43,7 +43,7 @@ add_executable(stratax
 	# renderer
 	src/vk/vk_device.c
 	src/vk/vk_swapchain.c
-	src/vk/pipeline/pipeline.c
+	src/vk/vk_pipeline.c
 	src/vk/vk_buffer.c
 )
 
