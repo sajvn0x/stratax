@@ -15,6 +15,23 @@ find_package(Vulkan REQUIRED)
 
 find_program(GLSLC glslc REQUIRED)
 
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shader.vert.spv
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.vert
+    COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.vert -o ${CMAKE_CURRENT_BINARY_DIR}/shader.vert.spv
+)
+
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shader.frag.spv
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag
+    COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag -o ${CMAKE_CURRENT_BINARY_DIR}/shader.frag.spv
+)
+
+add_custom_target(Shaders ALL DEPENDS
+    ${CMAKE_CURRENT_BINARY_DIR}/shader.vert.spv
+    ${CMAKE_CURRENT_BINARY_DIR}/shader.frag.spv
+)
+
 add_executable(stratax
     src/main.c
 
