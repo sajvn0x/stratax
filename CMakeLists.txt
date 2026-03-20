@@ -44,6 +44,7 @@ add_executable(stratax
 	src/vk/vk_device.c
 	src/vk/vk_swapchain.c
 	src/vk/pipeline/pipeline.c
+	src/vk/vk_buffer.c
 )
 
 target_include_directories(stratax PRIVATE
