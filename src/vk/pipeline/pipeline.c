@@ -10,7 +10,7 @@ bool shader_module_create(VulkanContext* context, const char* spv_file,
 bool vulkan_pipeline_create(VulkanContext* context,
                             const PipelineConfig* config,
                             VulkanPipeline* out_pipeline) {
-    VkDevice device = context->device.handle;
+    VkDevice device = context->device.device;
     memory_set(out_pipeline, 0, sizeof(VulkanPipeline));
 
     // shader stages
@@ -195,7 +195,7 @@ bool vulkan_pipeline_create(VulkanContext* context,
 }
 
 void vulkan_pipeline_destroy(VulkanContext* context, VulkanPipeline* pipeline) {
-    VkDevice device = context->device.handle;
+    VkDevice device = context->device.device;
 
     if (pipeline->handle) {
         vkDestroyPipeline(device, pipeline->handle, context->allocator);
@@ -310,7 +310,7 @@ bool shader_module_create(VulkanContext* context, const char* spv_file,
         .pCode = (uint32_t*)data};
 
     VkResult result =
-        vkCreateShaderModule(context->device.handle, &shader_module_ci,
+        vkCreateShaderModule(context->device.device, &shader_module_ci,
                              context->allocator, out_shader_module);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create shader module: %u", result);
