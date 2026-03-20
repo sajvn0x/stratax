@@ -1,5 +1,7 @@
 #include "vk_device.h"
 
+#include <GLFW/glfw3.h>
+
 #include "app.h"
 #include "core/logger.h"
 #include "core/memory.h"
@@ -86,15 +88,22 @@ void vulkan_device_destroy(VulkanContext* context) {
 }
 
 bool instance_create(VulkanContext* context) {
-    const char* INSTANCE_EXTENSIONS[] = {VK_KHR_SURFACE_EXTENSION_NAME,
-#if defined(PLATFORM_WINDOWS)
-                                         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-#elif defined(PLATFORM_LINUX)
-                                         VK_KHR_XCB_SURFACE_EXTENSION_NAME,
-#endif
-                                         VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
-    const u32 INSTANCE_EXTENSIONS_COUNT =
-        sizeof(INSTANCE_EXTENSIONS) / sizeof(INSTANCE_EXTENSIONS[0]);
+    const char* extensions[16];
+    u32 extension_count = 0;
+    const char** glfw_extensions =
+        glfwGetRequiredInstanceExtensions(&extension_count);
+    for (u32 i = 0; i < extension_count; ++i) {
+        extensions[i] = glfw_extensions[i];
+    }
+#if TGT_DEBUG
+    extensions[extension_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+#endif  // TGT_DEBUG
+
+    LOG_INFO("Extensions count: %d", extension_count);
+    LOG_INFO("Extensions");
+    for (u32 i = 0; i < extension_count; ++i) {
+        LOG_INFO("\t%s", extensions[i]);
+    }
 
     const char* INSTANCE_LAYERS[] = {"VK_LAYER_KHRONOS_validation"};
     u32 INSTANCE_LAYERS_COUNT =
@@ -104,15 +113,14 @@ bool instance_create(VulkanContext* context) {
                                   .pApplicationName = APP_NAME,
                                   .pEngineName = APP_ENGINE,
                                   .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-                                  .apiVersion = VK_API_VERSION_1_3};
+                                  .apiVersion = VK_API_VERSION_1_4};
 
-    VkInstanceCreateInfo ci = {
-        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pApplicationInfo = &app_info,
-        .enabledExtensionCount = INSTANCE_EXTENSIONS_COUNT,
-        .ppEnabledExtensionNames = INSTANCE_EXTENSIONS,
-        .enabledLayerCount = INSTANCE_LAYERS_COUNT,
-        .ppEnabledLayerNames = INSTANCE_LAYERS};
+    VkInstanceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                               .pApplicationInfo = &app_info,
+                               .enabledExtensionCount = extension_count,
+                               .ppEnabledExtensionNames = extensions,
+                               .enabledLayerCount = INSTANCE_LAYERS_COUNT,
+                               .ppEnabledLayerNames = INSTANCE_LAYERS};
 
     if (vkCreateInstance(&ci, context->allocator, &context->device.instance) !=
         VK_SUCCESS) {
@@ -182,10 +190,11 @@ bool debug_messenger_setup(VulkanContext* context) {
 #endif  // TGT_DEBUG
 
 bool surface_create(VulkanContext* context, GLFWwindow* window) {
-    if (glfwCreateWindowSurface(context->device.instance, window,
-                                context->allocator,
-                                &context->device.surface) != VK_SUCCESS) {
-        LOG_ERROR("Failed to create surface");
+    VkResult result =
+        glfwCreateWindowSurface(context->device.instance, window,
+                                context->allocator, &context->device.surface);
+    if (result != VK_SUCCESS) {
+        LOG_ERROR("Failed to create surface: %d", result);
         return false;
     }
 

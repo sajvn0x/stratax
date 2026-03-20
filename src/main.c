@@ -1,3 +1,4 @@
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include "app.h"
@@ -34,21 +35,20 @@ void vulkan_renderer_destroy() {
 
 int main() {
     if (!glfwInit()) return -1;
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
     window = glfwCreateWindow(WIDTH, HEIGHT, APP_NAME, NULL, NULL);
     if (!window) {
         glfwTerminate();
         return -1;
     }
-    glfwMakeContextCurrent(window);
 
-    if (vulkan_renderer_initialize()) {
+    if (!vulkan_renderer_initialize()) {
         LOG_ERROR("Failed to load the renderer");
         return -1;
     }
 
     while (!glfwWindowShouldClose(window)) {
-        glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
