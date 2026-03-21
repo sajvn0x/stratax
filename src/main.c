@@ -2,6 +2,7 @@
 #include <cglm/cam.h>
 
 #include "core/memory.h"
+#include "vk/vk_mesh.h"
 #include "vulkan/vulkan_core.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -9,7 +10,6 @@
 
 #include "app.h"
 #include "core/logger.h"
-#include "vk/vk_buffer.h"
 #include "vk/vk_device.h"
 #include "vk/vk_pipeline.h"
 #include "vk/vk_swapchain.h"
@@ -194,25 +194,14 @@ int main() {
         return -1;
     }
 
-    // Vertex buffer
-    VulkanBuffer vertex_buffer;
-    VulkanBufferCreateInfo vb_info = {
-        .size = sizeof(triangle_vertices),
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        .memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        .initial_data = (void*)triangle_vertices};
-    vulkan_buffer_create(&vulkan_context, &vb_info, &vertex_buffer);
-
-    // Index buffer
-    VulkanBuffer index_buffer;
-    VulkanBufferCreateInfo ib_info = {
-        .size = sizeof(triangle_indices),
-        .usage =
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        .memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        .initial_data = (void*)triangle_indices};
-    vulkan_buffer_create(&vulkan_context, &ib_info, &index_buffer);
+    Mesh triangle_mesh;
+    if (!mesh_create(&vulkan_context, triangle_vertices,
+                     sizeof(triangle_vertices) / sizeof(Vertex),
+                     triangle_indices, sizeof(triangle_indices) / sizeof(u16),
+                     VK_INDEX_TYPE_UINT16, &triangle_mesh)) {
+        LOG_ERROR("Failed to create mesh");
+        return -1;
+    }
 
     VkDevice device = vulkan_context.device.device;
     while (!glfwWindowShouldClose(window)) {
@@ -250,12 +239,6 @@ int main() {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           pipeline.handle);
 
-        // bind vertex & index buffers
-        VkBuffer vertexBuffers[] = {vertex_buffer.handle};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-        vkCmdBindIndexBuffer(cmd, index_buffer.handle, 0, VK_INDEX_TYPE_UINT16);
-
         VkViewport viewport = {0,
                                0,
                                (float)vulkan_context.swapchain.extent.width,
@@ -265,6 +248,9 @@ int main() {
         VkRect2D scissor = {{0, 0}, vulkan_context.swapchain.extent};
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        // draw triangle
+        mesh_draw(cmd, &triangle_mesh);
 
         vkCmdDrawIndexed(
             cmd, sizeof(triangle_vertices) / sizeof(triangle_vertices[0]), 1, 0,
@@ -301,8 +287,7 @@ int main() {
 
     vkDeviceWaitIdle(device);
 
-    vulkan_buffer_destroy(&vulkan_context, &vertex_buffer);
-    vulkan_buffer_destroy(&vulkan_context, &index_buffer);
+    mesh_destroy(&vulkan_context, &triangle_mesh);
 
     graphics_pipeline_destroy();
 

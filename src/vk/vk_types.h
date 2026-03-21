@@ -1,6 +1,7 @@
 #ifndef VULKAN_TYPES_H
 #define VULKAN_TYPES_H
 
+#include <cglm/types.h>
 #include <vulkan/vulkan_core.h>
 
 #include "core/defines.h"
@@ -62,5 +63,10 @@ typedef struct VulkanContext {
     i32 (*find_memory_index)(struct VulkanContext* context, u32 type_filter,
                              u32 property_flags);
 } VulkanContext;
+
+typedef struct {
+    vec3 pos;
+    vec3 color;
+} Vertex;
 
 #endif  // VULKAN_TYPES_H
