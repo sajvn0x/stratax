@@ -9,6 +9,24 @@ static const char* APP_ENGINE = "StrataZ";
 static const int WIDTH = 800;
 static const int HEIGHT = 600;
 
+typedef enum {
+    APP_STATE_UNINITIALIZED,
+    APP_STATE_INITIALIZING,
+    APP_STATE_RUNNING,
+    APP_STATE_PAUSED,
+    APP_STATE_SHUTDOWN
+} AppState;
+
+typedef struct {
+    AppState state;
+    bool resize_occured;
+
+    // timing
+    f64 last_time;
+    f64 delta_time;
+    u32 frame_count;
+} App;
+
 static const Vertex triangle_vertices[] = {
     {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},  // bottom
     {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},   // right

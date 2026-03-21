@@ -15,6 +15,8 @@
 #include "vk/vk_swapchain.h"
 #include "vk/vk_types.h"
 
+static App app;
+
 static VulkanContext vulkan_context = {0};
 static GLFWwindow* window = 0;
 static VkCommandBuffer* command_buffers = 0;
@@ -178,10 +180,14 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action,
     if (key == GLFW_KEY_L && action == GLFW_PRESS) {
         is_pipeline_line = !is_pipeline_line;
         LOG_INFO("Switched to %s mode", is_pipeline_line ? "line" : "fill");
+    } else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        app.state = APP_STATE_SHUTDOWN;
     }
 }
 
 int main() {
+    app.state = APP_STATE_INITIALIZING;
+
     if (!glfwInit()) return -1;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
@@ -210,6 +216,8 @@ int main() {
         return -1;
     }
 
+    app.state = APP_STATE_RUNNING;
+
     // graphics pipeline
     if (!graphics_pipelines_create()) {
         LOG_ERROR("Failed to create graphics pipelines");
@@ -226,7 +234,10 @@ int main() {
     }
 
     VkDevice device = vulkan_context.device.device;
+    app.state = APP_STATE_RUNNING;
     while (!glfwWindowShouldClose(window)) {
+        if (app.state != APP_STATE_RUNNING) break;
+
         glfwPollEvents();
 
         vkWaitForFences(device, 1, &in_flight_fence, VK_TRUE, UINT64_MAX);
