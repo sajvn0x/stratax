@@ -18,8 +18,10 @@
 static VulkanContext vulkan_context = {0};
 static GLFWwindow* window = 0;
 static VkCommandBuffer* command_buffers = 0;
-PipelineConfig pipeline_config;
-static VulkanPipeline pipeline = {0};
+static bool is_pipeline_line = true;
+
+static VulkanPipeline pipeline_fill = {0};
+static VulkanPipeline pipeline_line = {0};
 
 // synchrnonization objects
 VkSemaphore image_available_semaphore = 0;
@@ -66,62 +68,72 @@ static bool command_buffers_create() {
     return true;
 }
 
-static bool graphics_pipeline_create() {
-    pipeline_config = pipeline_config_default();
-    pipeline_config.stages =
+static bool graphics_pipeline_create_with_mode(VkPolygonMode polygon_mode,
+                                               VulkanPipeline* out_pipeline) {
+    PipelineConfig config = pipeline_config_default();
+    config.stages =
         memory_allocate(sizeof(VulkanShaderStageInfo) * 2, MEMORY_TAG_VULKAN);
-    // vertex shader
-    pipeline_config.stages[0].path = "triangle.vert.spv";
-    pipeline_config.stages[0].entry_point = "main";
-    pipeline_config.stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    // fragment shader
-    pipeline_config.stages[1].path = "triangle.frag.spv";
-    pipeline_config.stages[1].entry_point = "main";
-    pipeline_config.stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    pipeline_config.stage_count = 2;
+    config.stages[0].path = "triangle.vert.spv";
+    config.stages[0].entry_point = "main";
+    config.stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    config.stages[1].path = "triangle.frag.spv";
+    config.stages[1].entry_point = "main";
+    config.stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    config.stage_count = 2;
 
     // vertex input
-    pipeline_config.binding_count = 1;
-    pipeline_config.vertex_bindings =
+    config.binding_count = 1;
+    config.vertex_bindings =
         memory_allocate(sizeof(VulkanVertexBinding) * 1, MEMORY_TAG_VULKAN);
-    pipeline_config.vertex_bindings[0].binding = 0;
-    pipeline_config.vertex_bindings[0].stride = sizeof(Vertex);
-    pipeline_config.vertex_bindings[0].input_rate = VK_VERTEX_INPUT_RATE_VERTEX;
-    pipeline_config.vertex_bindings[0].attributes =
+    config.vertex_bindings[0].binding = 0;
+    config.vertex_bindings[0].stride = sizeof(Vertex);
+    config.vertex_bindings[0].input_rate = VK_VERTEX_INPUT_RATE_VERTEX;
+    config.vertex_bindings[0].attributes =
         memory_allocate(sizeof(VulkanVertexAttribute) * 2, MEMORY_TAG_VULKAN);
-    pipeline_config.vertex_bindings[0].attributes[0].location = 0;
-    pipeline_config.vertex_bindings[0].attributes[0].format =
-        VK_FORMAT_R32G32B32_SFLOAT;
-    pipeline_config.vertex_bindings[0].attributes[0].offset =
-        offsetof(Vertex, pos);
-    pipeline_config.vertex_bindings[0].attributes[1].location = 1;
-    pipeline_config.vertex_bindings[0].attributes[1].format =
-        VK_FORMAT_R32G32B32_SFLOAT;
-    pipeline_config.vertex_bindings[0].attributes[1].offset =
-        offsetof(Vertex, color);
-    pipeline_config.vertex_bindings[0].attribute_count = 2;
+    config.vertex_bindings[0].attributes[0].location = 0;
+    config.vertex_bindings[0].attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    config.vertex_bindings[0].attributes[0].offset = offsetof(Vertex, pos);
+    config.vertex_bindings[0].attributes[1].location = 1;
+    config.vertex_bindings[0].attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    config.vertex_bindings[0].attributes[1].offset = offsetof(Vertex, color);
+    config.vertex_bindings[0].attribute_count = 2;
 
-    // dynamic state
-    pipeline_config.dynamic_states =
+    // dynamic states
+    config.dynamic_states =
         memory_allocate(sizeof(VkDynamicState) * 2, MEMORY_TAG_VULKAN);
-    pipeline_config.dynamic_states[0] = VK_DYNAMIC_STATE_VIEWPORT;
-    pipeline_config.dynamic_states[1] = VK_DYNAMIC_STATE_SCISSOR;
-    pipeline_config.dynamic_state_count = 2;
+    config.dynamic_states[0] = VK_DYNAMIC_STATE_VIEWPORT;
+    config.dynamic_states[1] = VK_DYNAMIC_STATE_SCISSOR;
+    config.dynamic_state_count = 2;
 
-    // rasterization
-    pipeline_config.polygon_mode = VK_POLYGON_MODE_LINE;
+    // rasterization state
+    config.polygon_mode = polygon_mode;
 
-    if (!vulkan_pipeline_create(&vulkan_context, &pipeline_config, &pipeline)) {
-        LOG_ERROR("Failed to create graphis pipeline");
+    if (!vulkan_pipeline_create(&vulkan_context, &config, out_pipeline)) {
+        LOG_ERROR("Failed to create graphics pipeline for polygon mode %d",
+                  polygon_mode);
+        vulkan_pipeline_config_cleanup(&config);
         return false;
     }
 
+    vulkan_pipeline_config_cleanup(&config);
     return true;
 }
 
-void graphics_pipeline_destroy() {
-    vulkan_pipeline_destroy(&vulkan_context, &pipeline);
-    vulkan_pipeline_config_cleanup(&pipeline_config);
+static bool graphics_pipelines_create() {
+    if (!graphics_pipeline_create_with_mode(VK_POLYGON_MODE_FILL,
+                                            &pipeline_fill)) {
+        return false;
+    }
+    if (!graphics_pipeline_create_with_mode(VK_POLYGON_MODE_LINE,
+                                            &pipeline_line)) {
+        return false;
+    }
+    return true;
+}
+
+void graphics_pipelines_destroy() {
+    vulkan_pipeline_destroy(&vulkan_context, &pipeline_fill);
+    vulkan_pipeline_destroy(&vulkan_context, &pipeline_line);
 }
 
 bool sync_objects(VulkanContext* context) {
@@ -161,6 +173,14 @@ bool sync_objects(VulkanContext* context) {
     return true;
 }
 
+static void key_callback(GLFWwindow* window, int key, int scancode, int action,
+                         int mods) {
+    if (key == GLFW_KEY_L && action == GLFW_PRESS) {
+        is_pipeline_line = !is_pipeline_line;
+        LOG_INFO("Switched to %s mode", is_pipeline_line ? "line" : "fill");
+    }
+}
+
 int main() {
     if (!glfwInit()) return -1;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -170,6 +190,7 @@ int main() {
         glfwTerminate();
         return -1;
     }
+    glfwSetKeyCallback(window, key_callback);
 
     if (!vulkan_renderer_initialize()) {
         LOG_ERROR("Failed to load the renderer");
@@ -190,7 +211,8 @@ int main() {
     }
 
     // graphics pipeline
-    if (!graphics_pipeline_create()) {
+    if (!graphics_pipelines_create()) {
+        LOG_ERROR("Failed to create graphics pipelines");
         return -1;
     }
 
@@ -236,8 +258,13 @@ int main() {
         vkCmdBeginRenderPass(cmd, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
 
         // bind graphics pipeline
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          pipeline.handle);
+        if (is_pipeline_line) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              pipeline_line.handle);
+        } else {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              pipeline_fill.handle);
+        }
 
         VkViewport viewport = {0,
                                0,
@@ -289,7 +316,7 @@ int main() {
 
     mesh_destroy(&vulkan_context, &triangle_mesh);
 
-    graphics_pipeline_destroy();
+    graphics_pipelines_destroy();
 
     if (image_available_semaphore)
         vkDestroySemaphore(vulkan_context.device.device,
