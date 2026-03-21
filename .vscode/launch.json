@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Stratax",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/stratax",
+            "args": [],
+            "cwd": "${workspaceFolder}/build",
+            "sourceLanguages": ["c"]
+        }
+    ]
+}
