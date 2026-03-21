@@ -16,7 +16,6 @@ bool device_create(VulkanContext* context);
 bool render_pass_create(VulkanContext* context);
 bool query_swapchain_suppport(VulkanContext* context);
 bool graphics_command_pool(VulkanContext* context);
-bool sync_objects(VulkanContext* context);
 
 bool vulkan_device_create(VulkanContext* context, GLFWwindow* window) {
     LOG_TRACE("Vulkan device initializing");
@@ -31,7 +30,6 @@ bool vulkan_device_create(VulkanContext* context, GLFWwindow* window) {
     if (!query_swapchain_suppport(context)) return false;
     if (!render_pass_create(context)) return false;
     if (!graphics_command_pool(context)) return false;
-    if (!sync_objects(context)) return false;
 
     LOG_TRACE("Vulkan device initialized");
     return true;
@@ -269,7 +267,7 @@ bool device_create(VulkanContext* context) {
     const char* DEVICE_EXTENSIONS[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     const u32 DEVICE_EXTENSION_COUNT =
         sizeof(DEVICE_EXTENSIONS) / sizeof(DEVICE_EXTENSIONS[0]);
-    VkPhysicalDeviceFeatures features = {0};
+    VkPhysicalDeviceFeatures features = {.fillModeNonSolid = VK_TRUE};
 
     VkDeviceCreateInfo device_ci = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
