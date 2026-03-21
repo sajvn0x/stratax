@@ -257,10 +257,9 @@ PipelineConfig pipeline_config_default() {
 
 void vulkan_pipeline_config_cleanup(PipelineConfig* config) {
     if (config->stages)
-        memory_free(
-            config->stages,
-            sizeof(VkPipelineShaderStageCreateInfo) * config->stage_count,
-            MEMORY_TAG_VULKAN);
+        memory_free(config->stages,
+                    sizeof(VulkanShaderStageInfo) * config->stage_count,
+                    MEMORY_TAG_VULKAN);
     if (config->vertex_bindings) {
         for (u32 i = 0; i < config->binding_count; ++i) {
             if (config->vertex_bindings[i].attributes)
@@ -310,6 +309,8 @@ bool shader_module_create(VulkanContext* context, const char* spv_file,
         LOG_ERROR("Failed to create shader module: %u", result);
         return false;
     }
+
+    memory_free(data, size, MEMORY_TAG_STRING);
 
     return true;
 }

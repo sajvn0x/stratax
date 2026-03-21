@@ -316,6 +316,9 @@ int main() {
                                render_finished_semaphores[i],
                                vulkan_context.allocator);
     }
+    memory_free(render_finished_semaphores,
+                sizeof(VkSemaphore) * vulkan_context.swapchain.image_count,
+                MEMORY_TAG_VULKAN);
 
     if (in_flight_fence)
         vkDestroyFence(vulkan_context.device.device, in_flight_fence,
