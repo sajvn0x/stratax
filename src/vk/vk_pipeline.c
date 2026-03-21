@@ -39,7 +39,7 @@ bool vulkan_pipeline_create(VulkanContext* context,
                 stage_info->entry_point ? stage_info->entry_point : "main"};
     }
 
-    VkPipelineVertexInputStateCreateInfo vertex_input_info = {
+    VkPipelineVertexInputStateCreateInfo vertex_input_ci = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
 
     VkVertexInputBindingDescription* binding_descs = NULL;
@@ -78,15 +78,11 @@ bool vulkan_pipeline_create(VulkanContext* context,
             }
         }
 
-        vertex_input_info.vertexBindingDescriptionCount = config->binding_count;
-        vertex_input_info.pVertexBindingDescriptions = binding_descs;
-        vertex_input_info.vertexAttributeDescriptionCount = total_attrs;
-        vertex_input_info.pVertexAttributeDescriptions = attr_descs;
+        vertex_input_ci.vertexBindingDescriptionCount = config->binding_count;
+        vertex_input_ci.pVertexBindingDescriptions = binding_descs;
+        vertex_input_ci.vertexAttributeDescriptionCount = total_attrs;
+        vertex_input_ci.pVertexAttributeDescriptions = attr_descs;
     }
-
-    VkPipelineVertexInputStateCreateInfo vertex_input_ci = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-    };
 
     // input assembly
     VkPipelineInputAssemblyStateCreateInfo input_assembly_ci = {
@@ -97,10 +93,8 @@ bool vulkan_pipeline_create(VulkanContext* context,
     // viewport state
     VkPipelineViewportStateCreateInfo viewport_state_ci = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        // TODO:
-        // .viewportCount = 1,
-        // .scissorCount = 1
-    };
+        .viewportCount = 1,
+        .scissorCount = 1};
 
     // rasterizer
     VkPipelineRasterizationStateCreateInfo rasterizer_ci = {
@@ -187,7 +181,7 @@ bool vulkan_pipeline_create(VulkanContext* context,
                                   context->allocator, &out_pipeline->handle);
 
     if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to create graphics pipeline");
+        LOG_ERROR("Failed to create graphics pipeline: %d", result);
         return false;
     }
 
