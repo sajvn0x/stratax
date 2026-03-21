@@ -1,7 +1,6 @@
 #ifndef VULKAN_DEVICE_H
 #define VULKAN_DEVICE_H
 
-#include "core/defines.h"
 #include "vk_types.h"
 
 bool vulkan_device_create(VulkanContext* context, GLFWwindow* window);
