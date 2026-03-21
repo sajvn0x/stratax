@@ -27,9 +27,23 @@ add_custom_command(
     COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag -o ${CMAKE_CURRENT_BINARY_DIR}/shader.frag.spv
 )
 
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/triangle.vert.spv
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.vert
+    COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.vert -o ${CMAKE_CURRENT_BINARY_DIR}/triangle.vert.spv
+)
+
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/triangle.frag.spv
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.frag
+    COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.frag -o ${CMAKE_CURRENT_BINARY_DIR}/triangle.frag.spv
+)
+
 add_custom_target(Shaders ALL DEPENDS
     ${CMAKE_CURRENT_BINARY_DIR}/shader.vert.spv
     ${CMAKE_CURRENT_BINARY_DIR}/shader.frag.spv
+    ${CMAKE_CURRENT_BINARY_DIR}/triangle.vert.spv
+    ${CMAKE_CURRENT_BINARY_DIR}/triangle.frag.spv
 )
 
 add_executable(stratax
@@ -51,6 +65,8 @@ target_include_directories(stratax PRIVATE
     src
     ${Vulkan_INCLUDE_DIR}
 )
+
+target_compile_options(stratax PRIVATE -g)
 
 target_link_libraries(stratax PRIVATE
     glfw
