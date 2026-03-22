@@ -1,7 +1,7 @@
-#include <cglm/affine-pre.h>
 #include <cglm/cam.h>
 
 #include "core/memory.h"
+#include "vk/vk_buffer.h"
 #include "vk/vk_mesh.h"
 #include "vulkan/vulkan_core.h"
 #define GLFW_INCLUDE_VULKAN
@@ -20,7 +20,7 @@ static App app;
 static VulkanContext vulkan_context = {0};
 static GLFWwindow* window = 0;
 static VkCommandBuffer* command_buffers = 0;
-static bool is_pipeline_line = true;
+static bool is_pipeline_line = false;
 
 static VulkanPipeline pipeline_fill = {0};
 static VulkanPipeline pipeline_line = {0};
@@ -29,6 +29,11 @@ static VulkanPipeline pipeline_line = {0};
 VkSemaphore image_available_semaphore = 0;
 VkSemaphore* render_finished_semaphores = 0;
 VkFence in_flight_fence = 0;
+
+// resources descriptors
+static VkDescriptorPool descriptor_pool = 0;
+static VkDescriptorSetLayout descriptor_set_layout = 0;
+static VkDescriptorSet descriptor_set = 0;
 
 i32 find_memory_index(VulkanContext* context, u32 type_filter,
                       u32 property_flags);
@@ -51,6 +56,81 @@ bool vulkan_renderer_initialize() {
 void vulkan_renderer_destroy() {
     vulkan_swapchain_destroy(&vulkan_context);
     vulkan_device_destroy(&vulkan_context);
+}
+
+bool resource_descriptor_create(VkBuffer ub) {
+    // descriptor pool
+    VkDescriptorPoolSize pool_size = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                      .descriptorCount = 1};
+    VkDescriptorPoolCreateInfo descriptor_pool_ci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size};
+
+    if (vkCreateDescriptorPool(vulkan_context.device.device,
+                               &descriptor_pool_ci, vulkan_context.allocator,
+                               &descriptor_pool) != VK_SUCCESS) {
+        LOG_ERROR("Failed to create descriptor pool");
+        return false;
+    }
+
+    VkDescriptorSetLayoutBinding binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT};
+
+    VkDescriptorSetLayoutCreateInfo descriptor_layout_ci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &binding};
+
+    if (vkCreateDescriptorSetLayout(
+            vulkan_context.device.device, &descriptor_layout_ci,
+            vulkan_context.allocator, &descriptor_set_layout) != VK_SUCCESS) {
+        LOG_ERROR("Failed to create descriptor set layout");
+        return false;
+    }
+
+    VkDescriptorSetAllocateInfo descriptor_set_ai = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &descriptor_set_layout};
+
+    if (vkAllocateDescriptorSets(vulkan_context.device.device,
+                                 &descriptor_set_ai,
+                                 &descriptor_set) != VK_SUCCESS) {
+        LOG_ERROR("Failed to allocate descriptor sets");
+        return false;
+    }
+
+    VkDescriptorBufferInfo buffer_info = {
+        .buffer = ub,
+        .offset = 0,
+        .range = sizeof(UBO)  // or VK_WHOLE_SIZE
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptor_set,
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &buffer_info};
+
+    vkUpdateDescriptorSets(vulkan_context.device.device, 1, &write, 0, NULL);
+
+    return true;
+}
+
+void resource_descriptor_destroy() {
+    vkDestroyDescriptorSetLayout(vulkan_context.device.device,
+                                 descriptor_set_layout, NULL);
+    vkDestroyDescriptorPool(vulkan_context.device.device, descriptor_pool,
+                            NULL);
 }
 
 static bool command_buffers_create() {
@@ -109,6 +189,12 @@ static bool graphics_pipeline_create_with_mode(VkPolygonMode polygon_mode,
 
     // rasterization state
     config.polygon_mode = polygon_mode;
+
+    // resource descriptors
+    config.descriptor_set_layout_count = 1;
+    config.descriptor_set_layouts =
+        memory_allocate(sizeof(VkDescriptorSetLayout), MEMORY_TAG_VULKAN);
+    config.descriptor_set_layouts[0] = descriptor_set_layout;
 
     if (!vulkan_pipeline_create(&vulkan_context, &config, out_pipeline)) {
         LOG_ERROR("Failed to create graphics pipeline for polygon mode %d",
@@ -216,7 +302,27 @@ int main() {
         return -1;
     }
 
-    app.state = APP_STATE_RUNNING;
+    // uniform buffers
+    VulkanBuffer uniform_buffer;
+
+    VulkanBufferCreateInfo ub_info = {
+        .size = sizeof(UBO),
+        .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        .persistent_mapped = VK_TRUE};
+
+    if (!vulkan_buffer_create(&vulkan_context, &ub_info, &uniform_buffer)) {
+        LOG_ERROR("Failed to create uniform buffer");
+        return -1;
+    }
+
+    // resource descriptors
+    if (!resource_descriptor_create(uniform_buffer.handle)) {
+        LOG_ERROR("Failed to create resource descriptors");
+        return -1;
+    }
 
     // graphics pipeline
     if (!graphics_pipelines_create()) {
@@ -248,6 +354,23 @@ int main() {
                               UINT64_MAX, image_available_semaphore,
                               VK_NULL_HANDLE, &image_index);
 
+        static float angle = 0.0f;
+        angle += 0.01f;
+
+        UBO ubo;
+        vec3 eye = {2.0f, 2.0f, 2.0f};
+        vec3 center = {0.0f, 0.0f, 0.0f};
+        vec3 up = {0.0f, 1.0f, 0.0f};
+        glm_lookat(eye, center, up, ubo.view);
+        glm_ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 10.0f, ubo.proj);
+
+        glm_perspective(glm_rad(45.0f),
+                        (float)vulkan_context.swapchain.extent.width /
+                            (float)vulkan_context.swapchain.extent.height,
+                        0.1f, 10.0f, ubo.proj);
+
+        memory_copy(uniform_buffer.mapped, &ubo, sizeof(ubo));
+
         VkCommandBuffer cmd = command_buffers[image_index];
         vkResetCommandBuffer(cmd, 0);
 
@@ -269,13 +392,18 @@ int main() {
         vkCmdBeginRenderPass(cmd, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
 
         // bind graphics pipeline
+        VulkanPipeline graphics_pipeline;
         if (is_pipeline_line) {
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              pipeline_line.handle);
+            graphics_pipeline = pipeline_line;
         } else {
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              pipeline_fill.handle);
+            graphics_pipeline = pipeline_fill;
         }
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          graphics_pipeline.handle);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                graphics_pipeline.layout, 0, 1, &descriptor_set,
+                                0, NULL);
 
         VkViewport viewport = {0,
                                0,
@@ -289,10 +417,6 @@ int main() {
 
         // draw triangle
         mesh_draw(cmd, &triangle_mesh);
-
-        vkCmdDrawIndexed(
-            cmd, sizeof(triangle_vertices) / sizeof(triangle_vertices[0]), 1, 0,
-            0, 0);
 
         vkCmdEndRenderPass(cmd);
         vkEndCommandBuffer(cmd);
@@ -327,7 +451,11 @@ int main() {
 
     mesh_destroy(&vulkan_context, &triangle_mesh);
 
+    // uniform buffer
+    vulkan_buffer_destroy(&vulkan_context, &uniform_buffer);
+
     graphics_pipelines_destroy();
+    resource_descriptor_destroy();
 
     if (image_available_semaphore)
         vkDestroySemaphore(vulkan_context.device.device,

@@ -69,4 +69,9 @@ typedef struct {
     vec3 color;
 } Vertex;
 
+typedef struct {
+    mat4 view;
+    mat4 proj;
+} UBO;
+
 #endif  // VULKAN_TYPES_H
