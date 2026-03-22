@@ -60,6 +60,9 @@ add_executable(stratax
 	src/vk/vk_pipeline.c
 	src/vk/vk_buffer.c
 	src/vk/vk_mesh.c
+
+	# app
+	src/camera.c
 )
 
 target_include_directories(stratax PRIVATE

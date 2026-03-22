@@ -1,6 +1,7 @@
 #ifndef APP_H
 #define APP_H
 
+#include "camera.h"
 #include "core/defines.h"
 #include "vk/vk_types.h"
 
@@ -19,6 +20,7 @@ typedef enum {
 
 typedef struct {
     AppState state;
+    Camera camera;
     bool resize_occured;
 
     // timing

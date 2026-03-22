@@ -1,5 +1,6 @@
 #include <cglm/cam.h>
 
+#include "camera.h"
 #include "core/memory.h"
 #include "vk/vk_buffer.h"
 #include "vk/vk_mesh.h"
@@ -269,6 +270,38 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action,
     } else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         app.state = APP_STATE_SHUTDOWN;
     }
+
+    if (key == GLFW_KEY_W && action == GLFW_PRESS)
+        app.camera.keys[GLFW_KEY_W] = true;
+    if (key == GLFW_KEY_W && action == GLFW_RELEASE)
+        app.camera.keys[GLFW_KEY_W] = false;
+}
+
+static void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+    static Camera* cam = &app.camera;
+
+    if (cam->first_mouse) {
+        cam->last_x = xpos;
+        cam->last_y = ypos;
+        cam->first_mouse = false;
+    }
+
+    float xoffset = xpos - cam->last_x;
+    float yoffset = cam->last_y - ypos;  // reversed: y ranges bottom to top
+    cam->last_x = xpos;
+    cam->last_y = ypos;
+
+    xoffset *= cam->mouse_sensitivity;
+    yoffset *= cam->mouse_sensitivity;
+
+    cam->yaw += xoffset;
+    cam->pitch += yoffset;
+
+    // constrain pitch to avoid gimbal lock
+    if (cam->pitch > 89.0f) cam->pitch = 89.0f;
+    if (cam->pitch < -89.0f) cam->pitch = -89.0f;
+
+    camera_update_vectors(cam);
 }
 
 int main() {
@@ -282,6 +315,8 @@ int main() {
         glfwTerminate();
         return -1;
     }
+    camera_init(&app.camera);
+    glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetKeyCallback(window, key_callback);
 
     if (!vulkan_renderer_initialize()) {
@@ -354,14 +389,32 @@ int main() {
                               UINT64_MAX, image_available_semaphore,
                               VK_NULL_HANDLE, &image_index);
 
-        static float angle = 0.0f;
-        angle += 0.01f;
+        float current_time = glfwGetTime();
+        float deltaTime = current_time - app.last_time;
+        app.last_time = current_time;
+
+        float speed = app.camera.movement_speed * deltaTime;
+
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            glm_vec3_muladds(app.camera.front, speed, app.camera.position);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            glm_vec3_muladds(app.camera.front, -speed, app.camera.position);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            glm_vec3_muladds(app.camera.right, -speed, app.camera.position);
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            glm_vec3_muladds(app.camera.right, speed, app.camera.position);
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+            glm_vec3_muladds(app.camera.up, speed, app.camera.position);
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+            glm_vec3_muladds(app.camera.up, -speed, app.camera.position);
+
+        mat4 view;
+        vec3 center;
+        glm_vec3_add(app.camera.position, app.camera.front, center);
+        glm_lookat(app.camera.position, center, app.camera.up, view);
 
         UBO ubo;
-        vec3 eye = {2.0f, 2.0f, 2.0f};
-        vec3 center = {0.0f, 0.0f, 0.0f};
-        vec3 up = {0.0f, 1.0f, 0.0f};
-        glm_lookat(eye, center, up, ubo.view);
+        glm_mat4_copy(view, ubo.view);
         glm_ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 10.0f, ubo.proj);
 
         glm_perspective(glm_rad(45.0f),
