@@ -6,6 +6,7 @@ add_compile_definitions(_DEBUG=1)
 
 find_package(glfw3 REQUIRED)
 find_package(Threads REQUIRED)
+find_package(assimp REQUIRED)
 
 set(VULKAN_SDK $ENV{VULKAN_SDK})
 set(Vulkan_INCLUDE_DIR "${VULKAN_SDK}/include")
@@ -60,9 +61,11 @@ add_executable(stratax
 	src/vk/vk_pipeline.c
 	src/vk/vk_buffer.c
 	src/vk/vk_mesh.c
+	src/vk/vk_image.c
 
 	# app
 	src/camera.c
+	src/model.c
 )
 
 target_include_directories(stratax PRIVATE
@@ -77,5 +80,6 @@ target_link_libraries(stratax PRIVATE
     ${Vulkan_LIBRARY}
     cglm
     m
+	${ASSIMP_LIBRARIES}
 )
 
