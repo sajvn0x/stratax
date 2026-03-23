@@ -43,6 +43,7 @@ typedef struct {
     VkRenderPass render_pass;
 
     VkCommandPool graphics_command_pool;
+    VkDescriptorPool descriptor_pool;
 
     VkFormat depth_format;
 } VulkanDevice;

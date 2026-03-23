@@ -35,7 +35,6 @@ VkSemaphore* render_finished_semaphores = 0;
 VkFence in_flight_fence = 0;
 
 // resources descriptors
-static VkDescriptorPool descriptor_pool = 0;
 static VkDescriptorSetLayout descriptor_set_layout = 0;
 static VkDescriptorSet descriptor_set = 0;
 static VkDescriptorSetLayout descriptor_set_layout_tex = 0;
@@ -66,26 +65,6 @@ void vulkan_renderer_destroy() {
 }
 
 bool resource_descriptor_create(VkBuffer ub) {
-    // descriptor pool
-    VkDescriptorPoolSize pool_sizes[] = {
-        {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1},
-        {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-         .descriptorCount = 1}};
-
-    VkDescriptorPoolCreateInfo descriptor_pool_ci = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = 2,
-        .poolSizeCount = 2,
-        .pPoolSizes = pool_sizes};
-
-    VkResult result = vkCreateDescriptorPool(
-        vulkan_context.device.device, &descriptor_pool_ci,
-        vulkan_context.allocator, &descriptor_pool);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to create descriptor pool: %d", result);
-        return false;
-    }
-
     // UBO descriptor set layout
     VkDescriptorSetLayoutBinding ubo_binding = {
         .binding = 0,
@@ -96,7 +75,7 @@ bool resource_descriptor_create(VkBuffer ub) {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .bindingCount = 1,
         .pBindings = &ubo_binding};
-    result = vkCreateDescriptorSetLayout(
+    VkResult result = vkCreateDescriptorSetLayout(
         vulkan_context.device.device, &ubo_layout_info,
         vulkan_context.allocator, &descriptor_set_layout);
     if (result != VK_SUCCESS) {
@@ -124,7 +103,7 @@ bool resource_descriptor_create(VkBuffer ub) {
 
     VkDescriptorSetAllocateInfo ubo_alloc = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = descriptor_pool,
+        .descriptorPool = vulkan_context.device.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts = &descriptor_set_layout};
     result = vkAllocateDescriptorSets(vulkan_context.device.device, &ubo_alloc,
@@ -136,7 +115,7 @@ bool resource_descriptor_create(VkBuffer ub) {
 
     VkDescriptorSetAllocateInfo tex_alloc = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = descriptor_pool,
+        .descriptorPool = vulkan_context.device.descriptor_pool,
         .descriptorSetCount = 1,
         .pSetLayouts = &descriptor_set_layout_tex};
     result = vkAllocateDescriptorSets(vulkan_context.device.device, &tex_alloc,
@@ -183,8 +162,6 @@ void resource_descriptor_destroy() {
                                  vulkan_context.allocator);
     vkDestroyDescriptorSetLayout(vulkan_context.device.device,
                                  descriptor_set_layout, NULL);
-    vkDestroyDescriptorPool(vulkan_context.device.device, descriptor_pool,
-                            NULL);
 }
 
 static bool command_buffers_create() {

@@ -16,6 +16,7 @@ bool device_create(VulkanContext* context);
 bool render_pass_create(VulkanContext* context);
 bool query_swapchain_suppport(VulkanContext* context);
 bool graphics_command_pool(VulkanContext* context);
+bool descriptor_pool(VulkanContext* context);
 
 bool vulkan_device_create(VulkanContext* context, GLFWwindow* window) {
     LOG_TRACE("Vulkan device initializing");
@@ -30,6 +31,7 @@ bool vulkan_device_create(VulkanContext* context, GLFWwindow* window) {
     if (!query_swapchain_suppport(context)) return false;
     if (!render_pass_create(context)) return false;
     if (!graphics_command_pool(context)) return false;
+    if (!descriptor_pool(context)) return false;
 
     LOG_TRACE("Vulkan device initialized");
     return true;
@@ -37,6 +39,11 @@ bool vulkan_device_create(VulkanContext* context, GLFWwindow* window) {
 
 void vulkan_device_destroy(VulkanContext* context) {
     LOG_TRACE("Vulkan device destructing");
+
+    if (context->device.device)
+        vkDestroyDescriptorPool(context->device.device,
+                                context->device.descriptor_pool,
+                                context->allocator);
 
     if (context->device.graphics_command_pool)
         vkDestroyCommandPool(context->device.device,
@@ -412,6 +419,42 @@ bool graphics_command_pool(VulkanContext* context) {
 
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create graphics command pool");
+        return false;
+    }
+
+    return true;
+}
+
+bool descriptor_pool(VulkanContext* context) {
+    u32 POOL_SIZE_STORAGE_BUFFER = 1000;
+    u32 POOL_SIZE_DESCRIPTOR_SETS = 250;
+    u32 POOL_SIZE_STORAGE_IMAGE = 250;
+    u32 POOL_SIZE_COMBINED_IMAGE_SAMPLER = 250;
+    u32 POOL_SIZE_UNIFORM_BUFFER = 500;
+    u32 POOL_SIZE_UNIFORM_TEXEL_BUFFER = 100;
+    u32 POOL_SIZE_INPUT_ATTACHMENT = 100;
+
+    VkDescriptorPoolSize pool_sizes[6] = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, POOL_SIZE_STORAGE_BUFFER},
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, POOL_SIZE_STORAGE_IMAGE},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         POOL_SIZE_COMBINED_IMAGE_SAMPLER},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, POOL_SIZE_UNIFORM_BUFFER},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+         POOL_SIZE_UNIFORM_TEXEL_BUFFER},
+        {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, POOL_SIZE_INPUT_ATTACHMENT}};
+
+    VkDescriptorPoolCreateInfo descriptor_pool_ci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = POOL_SIZE_DESCRIPTOR_SETS,
+        .poolSizeCount = 6,
+        .pPoolSizes = pool_sizes};
+
+    VkResult result = vkCreateDescriptorPool(
+        context->device.device, &descriptor_pool_ci, context->allocator,
+        &context->device.descriptor_pool);
+    if (result != VK_SUCCESS) {
+        LOG_ERROR("Failed to create descriptor pool: %d", result);
         return false;
     }
 
