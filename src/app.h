@@ -30,10 +30,10 @@ typedef struct {
 } App;
 
 static const Vertex triangle_vertices[] = {
-    {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},  // bottom
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},   // right
-    {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}   // left
-};
+    // position (x, y, z)   color (r, g, b)   texCoord (u, v)
+    {{-0.5f, -0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}},
+    {{0.0f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.5f, 1.0f}}};
 
 static const u16 triangle_indices[] = {0, 1, 2};
 

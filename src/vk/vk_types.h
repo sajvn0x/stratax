@@ -67,6 +67,7 @@ typedef struct VulkanContext {
 typedef struct {
     vec3 pos;
     vec3 color;
+    vec2 tex_coord;
 } Vertex;
 
 typedef struct {
