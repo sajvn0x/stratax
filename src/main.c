@@ -11,9 +11,9 @@
 
 #include "app.h"
 #include "core/logger.h"
+#include "material.h"
 #include "vk/vk_device.h"
 #include "vk/vk_image.h"
-#include "vk/vk_pipeline.h"
 #include "vk/vk_swapchain.h"
 #include "vk/vk_types.h"
 
@@ -22,12 +22,6 @@ static App app;
 static VulkanContext vulkan_context = {0};
 static GLFWwindow* window = 0;
 static VkCommandBuffer* command_buffers = 0;
-static bool is_pipeline_line = false;
-
-static VulkanPipeline pipeline_fill = {0};
-static VulkanPipeline pipeline_line = {0};
-VkSampler texture_sampler;
-VulkanImage texture_image;
 
 // synchrnonization objects
 VkSemaphore image_available_semaphore = 0;
@@ -35,10 +29,8 @@ VkSemaphore* render_finished_semaphores = 0;
 VkFence in_flight_fence = 0;
 
 // resources descriptors
-static VkDescriptorSetLayout descriptor_set_layout = 0;
-static VkDescriptorSet descriptor_set = 0;
-static VkDescriptorSetLayout descriptor_set_layout_tex = 0;
-static VkDescriptorSet descriptor_set_tex = 0;
+static VkDescriptorSetLayout global_ubo_descriptor_layout = 0;
+static VkDescriptorSet global_ubo_descriptor_set = 0;
 
 i32 find_memory_index(VulkanContext* context, u32 type_filter,
                       u32 property_flags);
@@ -77,27 +69,9 @@ bool resource_descriptor_create(VkBuffer ub) {
         .pBindings = &ubo_binding};
     VkResult result = vkCreateDescriptorSetLayout(
         vulkan_context.device.device, &ubo_layout_info,
-        vulkan_context.allocator, &descriptor_set_layout);
+        vulkan_context.allocator, &global_ubo_descriptor_layout);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to create UBO descriptor set layout: %d", result);
-        return false;
-    }
-
-    // Texture descriptor set layout
-    VkDescriptorSetLayoutBinding tex_binding = {
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT};
-    VkDescriptorSetLayoutCreateInfo tex_layout_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &tex_binding};
-    result = vkCreateDescriptorSetLayout(
-        vulkan_context.device.device, &tex_layout_info,
-        vulkan_context.allocator, &descriptor_set_layout_tex);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to create texture descriptor set layout: %d", result);
         return false;
     }
 
@@ -105,23 +79,11 @@ bool resource_descriptor_create(VkBuffer ub) {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = vulkan_context.device.descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts = &descriptor_set_layout};
+        .pSetLayouts = &global_ubo_descriptor_layout};
     result = vkAllocateDescriptorSets(vulkan_context.device.device, &ubo_alloc,
-                                      &descriptor_set);
+                                      &global_ubo_descriptor_set);
     if (result != VK_SUCCESS) {
         LOG_ERROR("Failed to allocate UBO descriptor set: %d", result);
-        return false;
-    }
-
-    VkDescriptorSetAllocateInfo tex_alloc = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = vulkan_context.device.descriptor_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &descriptor_set_layout_tex};
-    result = vkAllocateDescriptorSets(vulkan_context.device.device, &tex_alloc,
-                                      &descriptor_set_tex);
-    if (result != VK_SUCCESS) {
-        LOG_ERROR("Failed to allocate texture descriptor set: %d", result);
         return false;
     }
 
@@ -129,7 +91,7 @@ bool resource_descriptor_create(VkBuffer ub) {
         .buffer = ub, .offset = 0, .range = sizeof(UBO)};
     VkWriteDescriptorSet ubo_write = {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = descriptor_set,
+        .dstSet = global_ubo_descriptor_set,
         .dstBinding = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
@@ -138,30 +100,12 @@ bool resource_descriptor_create(VkBuffer ub) {
     vkUpdateDescriptorSets(vulkan_context.device.device, 1, &ubo_write, 0,
                            NULL);
 
-    VkDescriptorImageInfo image_info = {
-        .sampler = texture_sampler,
-        .imageView = texture_image.view,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-    VkWriteDescriptorSet tex_write = {
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = descriptor_set_tex,
-        .dstBinding = 0,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo = &image_info};
-    vkUpdateDescriptorSets(vulkan_context.device.device, 1, &tex_write, 0,
-                           NULL);
-
     return true;
 }
 
 void resource_descriptor_destroy() {
     vkDestroyDescriptorSetLayout(vulkan_context.device.device,
-                                 descriptor_set_layout_tex,
-                                 vulkan_context.allocator);
-    vkDestroyDescriptorSetLayout(vulkan_context.device.device,
-                                 descriptor_set_layout, NULL);
+                                 global_ubo_descriptor_layout, NULL);
 }
 
 static bool command_buffers_create() {
@@ -179,85 +123,6 @@ static bool command_buffers_create() {
     }
 
     return true;
-}
-
-static bool graphics_pipeline_create_with_mode(VkPolygonMode polygon_mode,
-                                               VulkanPipeline* out_pipeline) {
-    PipelineConfig config = pipeline_config_default();
-    config.stages =
-        memory_allocate(sizeof(VulkanShaderStageInfo) * 2, MEMORY_TAG_VULKAN);
-    config.stages[0].path = "shader.vert.spv";
-    config.stages[0].entry_point = "main";
-    config.stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    config.stages[1].path = "shader.frag.spv";
-    config.stages[1].entry_point = "main";
-    config.stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    config.stage_count = 2;
-
-    // vertex input
-    config.binding_count = 1;
-    config.vertex_bindings =
-        memory_allocate(sizeof(VulkanVertexBinding) * 1, MEMORY_TAG_VULKAN);
-    config.vertex_bindings[0].binding = 0;
-    config.vertex_bindings[0].stride = sizeof(Vertex);
-    config.vertex_bindings[0].input_rate = VK_VERTEX_INPUT_RATE_VERTEX;
-    config.vertex_bindings[0].attributes =
-        memory_allocate(sizeof(VulkanVertexAttribute) * 3, MEMORY_TAG_VULKAN);
-    config.vertex_bindings[0].attributes[0].location = 0;
-    config.vertex_bindings[0].attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    config.vertex_bindings[0].attributes[0].offset = offsetof(Vertex, pos);
-    config.vertex_bindings[0].attributes[1].location = 1;
-    config.vertex_bindings[0].attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    config.vertex_bindings[0].attributes[1].offset = offsetof(Vertex, color);
-    config.vertex_bindings[0].attributes[2].location = 2;
-    config.vertex_bindings[0].attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
-    config.vertex_bindings[0].attributes[2].offset =
-        offsetof(Vertex, tex_coord);
-    config.vertex_bindings[0].attribute_count = 3;
-
-    // dynamic states
-    config.dynamic_states =
-        memory_allocate(sizeof(VkDynamicState) * 2, MEMORY_TAG_VULKAN);
-    config.dynamic_states[0] = VK_DYNAMIC_STATE_VIEWPORT;
-    config.dynamic_states[1] = VK_DYNAMIC_STATE_SCISSOR;
-    config.dynamic_state_count = 2;
-
-    // rasterization state
-    config.polygon_mode = polygon_mode;
-
-    // resource descriptors
-    config.descriptor_set_layout_count = 2;
-    config.descriptor_set_layouts =
-        memory_allocate(sizeof(VkDescriptorSetLayout) * 2, MEMORY_TAG_VULKAN);
-    config.descriptor_set_layouts[0] = descriptor_set_layout;
-    config.descriptor_set_layouts[1] = descriptor_set_layout_tex;
-
-    if (!vulkan_pipeline_create(&vulkan_context, &config, out_pipeline)) {
-        LOG_ERROR("Failed to create graphics pipeline for polygon mode %d",
-                  polygon_mode);
-        vulkan_pipeline_config_cleanup(&config);
-        return false;
-    }
-
-    vulkan_pipeline_config_cleanup(&config);
-    return true;
-}
-
-static bool graphics_pipelines_create() {
-    if (!graphics_pipeline_create_with_mode(VK_POLYGON_MODE_FILL,
-                                            &pipeline_fill)) {
-        return false;
-    }
-    if (!graphics_pipeline_create_with_mode(VK_POLYGON_MODE_LINE,
-                                            &pipeline_line)) {
-        return false;
-    }
-    return true;
-}
-
-void graphics_pipelines_destroy() {
-    vulkan_pipeline_destroy(&vulkan_context, &pipeline_fill);
-    vulkan_pipeline_destroy(&vulkan_context, &pipeline_line);
 }
 
 bool sync_objects(VulkanContext* context) {
@@ -299,10 +164,7 @@ bool sync_objects(VulkanContext* context) {
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action,
                          int mods) {
-    if (key == GLFW_KEY_L && action == GLFW_PRESS) {
-        is_pipeline_line = !is_pipeline_line;
-        LOG_INFO("Switched to %s mode", is_pipeline_line ? "line" : "fill");
-    } else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         app.state = APP_STATE_SHUTDOWN;
     }
 
@@ -388,6 +250,11 @@ int main() {
         return -1;
     }
 
+    if (!resource_descriptor_create(uniform_buffer.handle)) {
+        LOG_ERROR("Failed to create global UBO resource descriptor");
+        return -1;
+    }
+
     VkSamplerCreateInfo sampler_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = VK_FILTER_LINEAR,
@@ -406,6 +273,7 @@ int main() {
         .minLod = 0.0f,
         .maxLod = 0.0f};
 
+    VkSampler texture_sampler;
     if (vkCreateSampler(vulkan_context.device.device, &sampler_info,
                         vulkan_context.allocator, &texture_sampler)) {
         {
@@ -414,23 +282,17 @@ int main() {
         }
     }
 
+    VulkanImage texture_image;
     if (!load_texture(&vulkan_context, "../assets/Glass_125L.jpg",
                       &texture_image)) {
         LOG_ERROR("Failed to load the texture image");
         return -1;
     }
 
-    // resource descriptors
-    if (!resource_descriptor_create(uniform_buffer.handle)) {
-        LOG_ERROR("Failed to create resource descriptors");
-        return -1;
-    }
-
-    // graphics pipeline
-    if (!graphics_pipelines_create()) {
-        LOG_ERROR("Failed to create graphics pipelines");
-        return -1;
-    }
+    Material material;
+    material_create(&vulkan_context, "shader.vert.spv", "shader.frag.spv",
+                    &texture_image, texture_sampler,
+                    global_ubo_descriptor_layout, &material);
 
     Mesh triangle_mesh;
     if (!mesh_create(&vulkan_context, triangle_vertices,
@@ -512,21 +374,14 @@ int main() {
         vkCmdBeginRenderPass(cmd, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
 
         // bind graphics pipeline
-        VulkanPipeline graphics_pipeline;
-        if (is_pipeline_line) {
-            graphics_pipeline = pipeline_line;
-        } else {
-            graphics_pipeline = pipeline_fill;
-        }
-
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          graphics_pipeline.handle);
+                          material.pipeline.handle);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                graphics_pipeline.layout, 0, 1, &descriptor_set,
-                                0, NULL);
+                                material.pipeline.layout, 0, 1,
+                                &global_ubo_descriptor_set, 0, NULL);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                graphics_pipeline.layout, 1, 1,
-                                &descriptor_set_tex, 0, NULL);
+                                material.pipeline.layout, 1, 1,
+                                &material.texture_set, 0, NULL);
 
         VkViewport viewport = {0,
                                0,
@@ -580,8 +435,8 @@ int main() {
     vulkan_image_destroy(&vulkan_context, &texture_image);
     vkDestroySampler(device, texture_sampler, vulkan_context.allocator);
 
-    graphics_pipelines_destroy();
     resource_descriptor_destroy();
+    material_destroy(&vulkan_context, &material);
 
     if (image_available_semaphore)
         vkDestroySemaphore(vulkan_context.device.device,

@@ -52,6 +52,7 @@ add_executable(stratax
 	# app
 	src/camera.c
 	src/texture.c
+	src/material.c
 )
 
 target_include_directories(stratax PRIVATE
