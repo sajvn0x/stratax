@@ -56,6 +56,7 @@ add_executable(stratax
 
 target_include_directories(stratax PRIVATE
     src
+	external
     ${Vulkan_INCLUDE_DIR}
 )
 

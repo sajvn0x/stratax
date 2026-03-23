@@ -2,7 +2,8 @@
 #include "core/logger.h"
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "vendor/stb_image.h"
+#include <stb/stb_image.h>
+
 #include "vk/vk_buffer.h"
 #include "vk/vk_image.h"
 #include "vk/vk_types.h"
