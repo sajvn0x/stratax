@@ -53,6 +53,7 @@ add_executable(stratax
 	src/camera.c
 	src/texture.c
 	src/material.c
+	src/model.c
 )
 
 target_include_directories(stratax PRIVATE
