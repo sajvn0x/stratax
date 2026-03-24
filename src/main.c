@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "core/memory.h"
+#include "model.h"
 #include "vk/vk_buffer.h"
 #include "vk/vk_mesh.h"
 #include "vulkan/vulkan_core.h"
@@ -283,7 +284,7 @@ int main() {
     }
 
     VulkanImage texture_image;
-    if (!load_texture(&vulkan_context, "../assets/Glass_125L.jpg",
+    if (!load_texture(&vulkan_context, "../assets/triangle/tex.jpg",
                       &texture_image)) {
         LOG_ERROR("Failed to load the texture image");
         return -1;
@@ -294,12 +295,15 @@ int main() {
                     &texture_image, texture_sampler,
                     global_ubo_descriptor_layout, &material);
 
-    Mesh triangle_mesh;
-    if (!mesh_create(&vulkan_context, triangle_vertices,
-                     sizeof(triangle_vertices) / sizeof(Vertex),
-                     triangle_indices, sizeof(triangle_indices) / sizeof(u16),
-                     VK_INDEX_TYPE_UINT16, &triangle_mesh)) {
-        LOG_ERROR("Failed to create mesh");
+    Mesh* model_meshes = 0;
+    u32 mesh_count = 0;
+    if (!model_load(&vulkan_context, "../assets/triangle/triangle.obj",
+                    &model_meshes, &mesh_count)) {
+        LOG_ERROR("Failed to load the meshes");
+        return -1;
+    }
+    if (!model_meshes || mesh_count == 0) {
+        LOG_ERROR("Mesh count is 0");
         return -1;
     }
 
@@ -360,7 +364,8 @@ int main() {
             VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         vkBeginCommandBuffer(cmd, &beginInfo);
 
-        VkClearValue clear_color = {.color = {0.f, 0.f, 0.022f, 1.0f}};
+        VkClearColorValue color = {0.50f, 0.44f, 0.38f, 1.0f};
+        VkClearValue clear_color = {.color = color};
         VkRenderPassBeginInfo rp_begin = {
             VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rp_begin.renderPass = vulkan_context.device.render_pass;
@@ -393,8 +398,9 @@ int main() {
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        // draw triangle
-        mesh_draw(cmd, &triangle_mesh);
+        for (uint32_t i = 0; i < mesh_count; ++i) {
+            mesh_draw(cmd, &model_meshes[i]);
+        }
 
         vkCmdEndRenderPass(cmd);
         vkEndCommandBuffer(cmd);
@@ -427,7 +433,10 @@ int main() {
 
     vkDeviceWaitIdle(device);
 
-    mesh_destroy(&vulkan_context, &triangle_mesh);
+    for (uint32_t i = 0; i < mesh_count; ++i) {
+        mesh_destroy(&vulkan_context, &model_meshes[i]);
+    }
+    memory_free(model_meshes, sizeof(Mesh) * mesh_count, MEMORY_TAG_VULKAN);
 
     // uniform buffer
     vulkan_buffer_destroy(&vulkan_context, &uniform_buffer);
